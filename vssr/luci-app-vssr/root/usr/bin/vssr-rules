@@ -184,7 +184,14 @@ tp_rule() {
     ip rule add fwmark 0x01/0x01 table 100
     ip route add local 0.0.0.0/0 dev lo table 100
     local ipt="iptables -t mangle"
+    $ipt -N SS_SPEC_OUTPUT_UDP_AC
+    $ipt -A SS_SPEC_OUTPUT_UDP_AC -d $server -j RETURN
+    $ipt -A SS_SPEC_OUTPUT_UDP_AC -o lo ! -s 127.0.0.1 -j RETURN
+    $ipt -A SS_SPEC_OUTPUT_UDP_AC -p udp --sport 53 -j RETURN
+    $ipt -A SS_SPEC_OUTPUT_UDP_AC -p udp -m multiport ! --dport 53,5335 -j MARK --set-mark 1
     $ipt -N SS_SPEC_TPROXY
+    $ipt -A SS_SPEC_TPROXY -p udp -m set --match-set whitelist dst -j RETURN
+    $ipt -A SS_SPEC_TPROXY -p udp -m set --match-set blacklist dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark 0x01/0x01
     $ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
     $ipt -A SS_SPEC_TPROXY -p udp -d 0.0.0.0/8 -j RETURN
     $ipt -A SS_SPEC_TPROXY -p udp -d 10.0.0.0/8 -j RETURN
@@ -219,6 +226,7 @@ tp_rule() {
         $ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark 0x01/0x01
         ;;
     esac
+    $ipt -I OUTPUT 1 ${IFNAME:+-i $IFNAME} -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_OUTPUT_UDP_AC
     $ipt -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p udp $EXT_ARGS $MATCH_SET \
         -m comment --comment "$TAG" -j SS_SPEC_TPROXY
     return $?
